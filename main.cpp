@@ -1,13 +1,10 @@
-// morning_game_fullscreen.cpp
 #include <SDL.h>
 #include <SDL_image.h>
 #include <bits/stdc++.h>
 
-// Kích thước cửa sổ mặc định (sẽ được thay đổi khi fullscreen)
 const int SCREEN_WIDTH = 800;
 const int SCREEN_HEIGHT = 600;
 
-// Hàm load texture từ file
 SDL_Texture* LoadTexture(SDL_Renderer* renderer, const char* filePath) {
     SDL_Surface* surface = IMG_Load(filePath);
     if (!surface) {
@@ -20,7 +17,6 @@ SDL_Texture* LoadTexture(SDL_Renderer* renderer, const char* filePath) {
     return tex;
 }
 
-// --- Entity cơ sở ---
 struct Entity {
     SDL_Rect rect;
     SDL_Texture* texture;
@@ -34,7 +30,6 @@ struct Entity {
     }
 };
 
-// --- Con chó ---
 class Dog : public Entity {
 public:
     void HandleInput(const Uint8* keystates) {
@@ -51,7 +46,6 @@ public:
     void Update() override {}
 };
 
-// --- Con cừu ---
 class Sheep : public Entity {
 public:
     void UpdateAvoidDog(SDL_Rect dogRect) {
@@ -71,19 +65,16 @@ public:
     void Update() override {}
 };
 
-// Hàm kiểm tra cừu đã vào chuồng chưa
 bool IsInPen(SDL_Rect sheep, SDL_Rect pen) {
     return SDL_HasIntersection(&sheep, &pen);
 }
 
 int main(int argc, char* argv[]) {
-    // Khởi tạo SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         std::cerr << "SDL Init error: " << SDL_GetError() << std::endl;
         return -1;
     }
 
-    // Khởi tạo SDL_image, hỗ trợ định dạng PNG
     if (!(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
         std::cerr << "SDL_image Init error: " << IMG_GetError() << std::endl;
         SDL_Quit();
@@ -94,7 +85,7 @@ int main(int argc, char* argv[]) {
     SDL_Window* window = SDL_CreateWindow(
     "Buổi sáng - Lùa cừu",
     SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-    1000, 600, // width, height = 0 để SDL tự chọn độ phân giải theo fullscreen
+    1000, 600,
     SDL_WINDOW_FULLSCREEN
 );
     if (!window) {
@@ -104,7 +95,6 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    // Tạo renderer
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (!renderer) {
         std::cerr << "Không tạo được renderer: " << SDL_GetError() << std::endl;
@@ -114,7 +104,6 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    // Load texture cho background, chuồng, chó, cừu
     SDL_Texture* bgTexture    = LoadTexture(renderer, "bg.png");
     SDL_Texture* penTexture   = LoadTexture(renderer, "pen.png");
     SDL_Texture* dogTexture   = LoadTexture(renderer, "dog.png");
@@ -129,30 +118,25 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    // Khởi tạo đối tượng chó
     Dog dog;
     dog.rect = { 100, 100, 64, 64 };
     dog.texture = dogTexture;
 
-    // Tạo danh sách cừu
     std::vector<Sheep> sheeps;
     for (int i = 0; i < 10; ++i) {
         Sheep s;
-        s.rect = { rand() % 400 +50, rand() % 400 +100, 48, 48 };
+        s.rect = { rand() % 600, rand() % 400, 48, 48 };
         s.texture = sheepTexture;
         sheeps.push_back(s);
     }
 
-    // Khu vực chuồng (vị trí và kích thước)
     SDL_Rect penRect = { 650, 150, 220, 300 };
 
-    // Biến lưu trạng thái fullscreen (mặc định false)
     bool isFullscreen = false;
 
     bool running = true;
     SDL_Event e;
     while (running) {
-        // Xử lý sự kiện
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) {
                 running = false;
@@ -162,7 +146,7 @@ int main(int argc, char* argv[]) {
                     case SDLK_ESCAPE:
                         running = false;
                         break;
-                    case SDLK_f: // Nhấn "F" để chuyển đổi fullscreen
+                    case SDLK_f:
                     {
                         isFullscreen = !isFullscreen;
                         if (isFullscreen) {
@@ -201,25 +185,19 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // Xử lý bàn phím cho con chó (sử dụng trạng thái bàn phím)
         const Uint8* keystates = SDL_GetKeyboardState(NULL);
         dog.HandleInput(keystates);
 
-        // Cập nhật trạng thái của các con cừu (né khi chó đến gần)
         for (auto& sheep : sheeps) {
             sheep.UpdateAvoidDog(dog.rect);
         }
 
-        // Kiểm tra cừu nào đã vào chuồng
         sheeps.erase(std::remove_if(sheeps.begin(), sheeps.end(),
             [&](Sheep& s) { return IsInPen(s.rect, penRect); }), sheeps.end());
 
-        // Render:
-        // Vẽ background toàn màn hình
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, bgTexture, NULL, NULL);
 
-        // Vẽ chuồng, nếu có texture chuồng, dùng đó; nếu không, vẽ hình chữ nhật
         if (penTexture) {
             SDL_RenderCopy(renderer, penTexture, NULL, &penRect);
         } else {
@@ -227,17 +205,15 @@ int main(int argc, char* argv[]) {
             SDL_RenderFillRect(renderer, &penRect);
         }
 
-        // Vẽ đối tượng chó và cừu
         dog.Render(renderer);
         for (auto& s : sheeps) {
             s.Render(renderer);
         }
 
         SDL_RenderPresent(renderer);
-        SDL_Delay(16); // ~60 FPS
+        SDL_Delay(16);
     }
 
-    // Giải phóng tài nguyên
     SDL_DestroyTexture(bgTexture);
     if (penTexture)
         SDL_DestroyTexture(penTexture);
