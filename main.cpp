@@ -76,6 +76,10 @@ bool IsInPen(SDL_Rect sheep, SDL_Rect pen) {
 }
 
 int main(int argc, char* argv[]) {
+    struct PendingSheep {
+        Uint32 spawnTime;
+    };
+std::vector<PendingSheep> sheepToSpawn;
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         std::cerr << "SDL Init error: " << SDL_GetError() << std::endl;
         return -1;
@@ -158,12 +162,35 @@ int main(int argc, char* argv[]) {
         const Uint8* keystates = SDL_GetKeyboardState(NULL);
         dog.HandleInput(keystates);
 
+        Uint32 now = SDL_GetTicks();
+        auto it = sheepToSpawn.begin();
+        while (it != sheepToSpawn.end()) {
+            if (now >= it->spawnTime) {
+                Sheep s;
+                s.rect = { rand() % (SCREEN_WIDTH - 48), rand() % (SCREEN_HEIGHT - 48), 48, 48 };
+                s.texture = sheepTexture;
+                sheeps.push_back(s);
+                it = sheepToSpawn.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
         for (auto& sheep : sheeps) {
             sheep.UpdateAvoidDog(dog.rect);
         }
 
-        sheeps.erase(std::remove_if(sheeps.begin(), sheeps.end(),
-            [&](Sheep& s) { return IsInPen(s.rect, penRect); }), sheeps.end());
+        std::vector<Sheep> remainingSheep;
+        for (auto& s : sheeps) {
+            if (IsInPen(s.rect, penRect)) {
+                Uint32 spawnAt = SDL_GetTicks() + 10000; // 10 giây sau
+                sheepToSpawn.push_back({ spawnAt });
+            }
+            else {
+                remainingSheep.push_back(s);
+            }
+        }
+sheeps = remainingSheep;
 
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, bgTexture, NULL, NULL);
