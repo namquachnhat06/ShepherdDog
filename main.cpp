@@ -2,8 +2,8 @@
 #include <SDL_image.h>
 #include <bits/stdc++.h>
 
-const int SCREEN_WIDTH = 800;
-const int SCREEN_HEIGHT = 600;
+const int SCREEN_WIDTH = 980;
+const int SCREEN_HEIGHT = 700;
 
 SDL_Texture* LoadTexture(SDL_Renderer* renderer, const char* filePath) {
     SDL_Surface* surface = IMG_Load(filePath);
@@ -40,8 +40,8 @@ public:
         if (keystates[SDL_SCANCODE_RIGHT]) rect.x += speed;
         if (rect.x < 0) rect.x=0;
         if (rect.y < 0) rect.y=0;
-        if (rect.x + rect.w > SCREEN_WIDTH) rect.x =SCREEN_WIDTH - rect.w;
-        if (rect.y + rect.h > SCREEN_WIDTH) rect.y =SCREEN_HEIGHT - rect.h;
+        if (rect.x > SCREEN_WIDTH) rect.x =SCREEN_WIDTH;
+        if (rect.y > SCREEN_HEIGHT) rect.y =SCREEN_HEIGHT;
     }
     void Update() override {}
 };
@@ -57,10 +57,16 @@ public:
             rect.x += static_cast<int>((dx / dist) * factor);
             rect.y += static_cast<int>((dy / dist) * factor);
         }
-        if (rect.x < 0) rect.x=0;
-        if (rect.y < 0) rect.y=0;
-        if (rect.x + rect.w > SCREEN_WIDTH) rect.x =SCREEN_WIDTH - rect.w;
-        if (rect.y + rect.h > SCREEN_WIDTH) rect.y =SCREEN_HEIGHT - rect.h;
+        // Kiểm tra chạm viền, nếu có thì dịch chuyển ngẫu nhiên nhẹ để tránh kẹt
+        bool hitWall = false;
+        if (rect.x < 0) { rect.x = 0; hitWall = true; }
+        if (rect.y < 0) { rect.y = 0; hitWall = true; }
+        if (rect.x > SCREEN_WIDTH) { rect.x = SCREEN_WIDTH ; hitWall = true; }
+        if (rect.y > SCREEN_HEIGHT) { rect.y = SCREEN_HEIGHT ; hitWall = true; }
+        if (hitWall) {
+            rect.x += (rand() % 11 - 5);
+            rect.y += (rand() % 11 - 5);
+        }
     }
     void Update() override {}
 };
@@ -81,13 +87,12 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    // Tạo cửa sổ
     SDL_Window* window = SDL_CreateWindow(
-    "Buổi sáng - Lùa cừu",
-    SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-    1000, 600,
-    SDL_WINDOW_FULLSCREEN
-);
+        "ShepherDog",
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        980, 700,
+        SDL_WINDOW_FULLSCREEN
+    );
     if (!window) {
         std::cerr << "Không tạo được cửa sổ: " << SDL_GetError() << std::endl;
         IMG_Quit();
@@ -131,9 +136,7 @@ int main(int argc, char* argv[]) {
     }
 
     SDL_Rect penRect = { 650, 150, 220, 300 };
-
     bool isFullscreen = false;
-
     bool running = true;
     SDL_Event e;
     while (running) {
@@ -142,44 +145,11 @@ int main(int argc, char* argv[]) {
                 running = false;
             }
             else if (e.type == SDL_KEYDOWN) {
-                switch (e.key.keysym.sym) {
-                    case SDLK_ESCAPE:
-                        running = false;
-                        break;
-                    case SDLK_f:
-                    {
-                        isFullscreen = !isFullscreen;
-                        if (isFullscreen) {
-                            if (SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP) != 0) {
-                                std::cerr << "Lỗi chuyển sang fullscreen: " << SDL_GetError() << std::endl;
-                            }
-                        } else {
-                            if (SDL_SetWindowFullscreen(window, 0) != 0) {
-                                std::cerr << "Lỗi chuyển ra cửa sổ: " << SDL_GetError() << std::endl;
-                            }
-                        }
-                        break;
-                    }
-                    default:
-                        break;
-                }
-            }
-            if (e.type == SDL_KEYDOWN) {
-                SDL_Keycode key = e.key.keysym.sym;
-                if (key == SDLK_ESCAPE) {
-                    running = false;
-                }
-                else if (key == SDLK_f) {
+                if (e.key.keysym.sym == SDLK_ESCAPE) running = false;
+                else if (e.key.keysym.sym == SDLK_f) {
                     isFullscreen = !isFullscreen;
-                    if (isFullscreen) {
-                        if (SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP) != 0) {
-                            std::cerr << "Lỗi chuyển sang fullscreen: " << SDL_GetError() << std::endl;
-                        }
-                    }
-                    else {
-                        if (SDL_SetWindowFullscreen(window, 0) != 0) {
-                            std::cerr << "Lỗi chuyển ra cửa sổ: " << SDL_GetError() << std::endl;
-                        }
+                    if (SDL_SetWindowFullscreen(window, isFullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0) != 0) {
+                        std::cerr << "Lỗi chuyển đổi fullscreen: " << SDL_GetError() << std::endl;
                     }
                 }
             }
@@ -197,33 +167,20 @@ int main(int argc, char* argv[]) {
 
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, bgTexture, NULL, NULL);
-
-        if (penTexture) {
-            SDL_RenderCopy(renderer, penTexture, NULL, &penRect);
-        } else {
-            SDL_SetRenderDrawColor(renderer, 200, 100, 50, 255);
-            SDL_RenderFillRect(renderer, &penRect);
-        }
-
+        if (penTexture) SDL_RenderCopy(renderer, penTexture, NULL, &penRect);
         dog.Render(renderer);
-        for (auto& s : sheeps) {
-            s.Render(renderer);
-        }
-
+        for (auto& s : sheeps) s.Render(renderer);
         SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
 
     SDL_DestroyTexture(bgTexture);
-    if (penTexture)
-        SDL_DestroyTexture(penTexture);
+    if (penTexture) SDL_DestroyTexture(penTexture);
     SDL_DestroyTexture(dogTexture);
     SDL_DestroyTexture(sheepTexture);
-
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     IMG_Quit();
     SDL_Quit();
-
     return 0;
 }
