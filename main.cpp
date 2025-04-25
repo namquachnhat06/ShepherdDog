@@ -1,11 +1,13 @@
 #include <SDL.h>
 #include <SDL_image.h>
+#include <SDL_mixer.h>
 #include <bits/stdc++.h>
 
 const int SCREEN_WIDTH = 980;
 const int SCREEN_HEIGHT = 700;
 const int LANE_HEIGHT = 200;
-const int DAY_DURATION = 120000; // 2 phút
+const int DAY_DURATION = 74000;
+const int NIGHT_DURATION = 74000;
 
 SDL_Texture* LoadTexture(SDL_Renderer* renderer, const char* filePath) {
     SDL_Surface* surface = IMG_Load(filePath);
@@ -119,11 +121,26 @@ public:
 int main(int argc, char* argv[]) {
     srand(static_cast<unsigned int>(time(0)));
 
-    if (SDL_Init(SDL_INIT_VIDEO) < 0 || !(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0 || !(IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG)) {
         std::cerr << "SDL Init lỗi: " << SDL_GetError() << std::endl;
         return -1;
     }
 
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+        std::cout << "Lỗi Mix_OpenAudio: " << Mix_GetError() << std::endl;
+        return 1;
+    }
+
+    Mix_Music* dayMusic = Mix_LoadMUS("day_music.mp3");
+    Mix_Music* nightMusic = Mix_LoadMUS("night_music.mp3");
+    Mix_Chunk* sheepSound = Mix_LoadWAV("sheep_sound.wav");
+    Mix_Chunk* bulletSound = Mix_LoadWAV("bullet_sound.wav");
+    Mix_Chunk* monsterSound = Mix_LoadWAV("monster_sound.wav");
+
+    if (!dayMusic || !nightMusic || !sheepSound || !bulletSound || !monsterSound) {
+        std::cout << "Lỗi tải âm thanh: " << Mix_GetError() << std::endl;
+        return 1;
+    }
     SDL_Window* window = SDL_CreateWindow("ShepherdDog",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         SCREEN_WIDTH, SCREEN_HEIGHT, 0);
@@ -159,6 +176,7 @@ int main(int argc, char* argv[]) {
     bool showTransition = false;
     Uint32 transitionStart = 0;
 
+    Uint32 nightStart = 0;
     bool inNight = false;
     Player player;
     player.rect = { 250, 100 + 1 * LANE_HEIGHT, 64, 64 };
@@ -186,7 +204,12 @@ int main(int argc, char* argv[]) {
         Uint32 now = SDL_GetTicks();
         const Uint8* keys = SDL_GetKeyboardState(NULL);
 
-        if (inDay) {
+        if (inDay ) {
+            static bool dayMusicPlaying = false;
+            if (!dayMusicPlaying) {
+                Mix_PlayMusic(dayMusic, -1); // lặp vô hạn
+                dayMusicPlaying = true;
+            }
             dog.HandleInput(keys);
 
             for (auto& s : sheeps) {
@@ -196,6 +219,7 @@ int main(int argc, char* argv[]) {
             std::vector<Sheep> remaining;
             for (auto& s : sheeps) {
                 if (IsInPen(s.rect, penRect)) {
+                    Mix_PlayChannel(-1, sheepSound, 0);
                     sheepRespawnTime.push_back(now + 10000);
                 } else {
                     remaining.push_back(s);
@@ -218,6 +242,8 @@ int main(int argc, char* argv[]) {
                 inDay = false;
                 showTransition = true;
                 transitionStart = now;
+                Mix_HaltMusic();
+                dayMusicPlaying = false;
             }
 
             SDL_RenderClear(renderer);
@@ -235,10 +261,11 @@ int main(int argc, char* argv[]) {
             if (now - transitionStart > 3000) {
                 showTransition = false;
                 inNight = true;
+                nightStart = SDL_GetTicks();
+                Mix_PlayMusic(nightMusic, -1);
             }
         }
-        else if (inNight) {
-
+        else if (inNight ) {
             if (keys[SDL_SCANCODE_UP] && now - lastArrowPress > arrowDelay) {
                 player.MoveUp();
                 lastArrowPress = now;
@@ -248,10 +275,11 @@ int main(int argc, char* argv[]) {
             }
             if (keys[SDL_SCANCODE_SPACE] && !bulletOnScreen) {
                 Bullet b;
-                b.rect = { player.rect.x + player.rect.w, player.rect.y + 32, 75, 100 };
+                b.rect = { player.rect.x + player.rect.w, player.rect.y - 32, 75, 100 };
                 b.texture = bulletTex;
                 bullets.push_back(b);
                 bulletOnScreen = true;
+                Mix_PlayChannel(-1,bulletSound, 0);
             }
 
             for (auto& b : bullets) b.Update();
@@ -267,7 +295,7 @@ int main(int argc, char* argv[]) {
             if (now - lastMonsterSpawn > monsterInterval) {
                 Monster m;
                 int lane = rand() % 3;
-                m.rect = { SCREEN_WIDTH, 100 + lane * LANE_HEIGHT, 80, 80 };
+                m.rect = { SCREEN_WIDTH, 100 + lane * LANE_HEIGHT, 64, 64 };
                 m.texture = monsterTex;
                 monsters.push_back(m);
                 lastMonsterSpawn = now;
@@ -281,6 +309,7 @@ int main(int argc, char* argv[]) {
                 for (auto& b : bullets) {
                     if (SDL_HasIntersection(&m.rect, &b.rect)) {
                         hit = true;
+                        Mix_PlayChannel(-1, monsterSound, 0);
                         b.rect.x = SCREEN_WIDTH + 100;
                         break;
                     }
@@ -296,12 +325,25 @@ int main(int argc, char* argv[]) {
             for (auto& b : bullets) b.Render(renderer);
             for (auto& m : monsters) m.Render(renderer);
             SDL_RenderPresent(renderer);
+            if (now - nightStart > NIGHT_DURATION) {
+                inNight = false;
+                running = false;
+                Mix_HaltMusic();
+            }
         }
         Uint32 frameTime = SDL_GetTicks() - startTicks;
         if (frameTime < 1000 / 60) {
             SDL_Delay((1000 / 60) - frameTime);
         }
     }
+
+    Mix_FreeMusic(dayMusic);
+    Mix_FreeMusic(nightMusic);
+    Mix_FreeChunk(sheepSound);
+    Mix_FreeChunk(bulletSound);
+    Mix_FreeChunk(monsterSound);
+    Mix_CloseAudio();
+
 
     SDL_DestroyTexture(bgDay);
     SDL_DestroyTexture(bgNight);
