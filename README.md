@@ -1,4 +1,5 @@
 Giới thiệu cơ bản
+
 “Shepherd Dog” là một game có sự kết hợp độc đáo giữa hai pha:
 	•	Ban ngày: Bạn vào vai một chú chó chăn cừu, nhiệm vụ là lùa cừu vào chuồng.
 	•	Ban đêm: Bạn điều khiển nhân vật để phòng thủ trang trại trước những đợt tấn công từ sói đến hết màn đêm. 
