@@ -275,7 +275,7 @@ int main(int argc, char* argv[]) {
             }
             if (keys[SDL_SCANCODE_SPACE] && !bulletOnScreen) {
                 Bullet b;
-                b.rect = { player.rect.x + player.rect.w, player.rect.y - 32, 75, 100 };
+                b.rect = { player.rect.x + player.rect.w, player.rect.y - 2, 75, 100 };
                 b.texture = bulletTex;
                 bullets.push_back(b);
                 bulletOnScreen = true;
