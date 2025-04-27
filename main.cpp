@@ -31,6 +31,11 @@ struct Entity {
     }
 };
 
+bool IsOverLapping(const SDL_Rect& a, const SDL_Rect& b) {
+    return SDL_HasIntersection(&a, &b);
+}
+
+
 class Dog : public Entity {
 public:
     void HandleInput(const Uint8* keystates) {
@@ -49,20 +54,45 @@ public:
 
 class Sheep : public Entity {
 public:
-    void UpdateAvoidDog(SDL_Rect dogRect) {
+    void UpdateAvoidDog(SDL_Rect dogRect, std::vector<Sheep>& allSheeps) {
         float dx = rect.x - dogRect.x;
         float dy = rect.y - dogRect.y;
         float dist = std::sqrt(dx * dx + dy * dy);
         if (dist < 100 && dist > 0.1f) {
-            float factor = 2.0f;
-            rect.x += static_cast<int>((dx / dist) * factor);
-            rect.y += static_cast<int>((dy / dist) * factor);
+            float speed = 2.0f;
+            rect.x += static_cast<int>((dx / dist) * speed);
+            rect.y += static_cast<int>((dy / dist) * speed);
         }
+
+        // Tránh các con cừu khác
+        for (auto& otherSheep : allSheeps) {
+            if (&otherSheep == this) continue; // Bỏ qua chính nó
+            if (IsOverLapping(rect, otherSheep.rect)) {
+                // Đẩy ra xa dựa trên hướng
+                int push = 1.5; // Khoảng cách đẩy mỗi lần
+                if (rect.x < otherSheep.rect.x) {
+                    rect.x -= push;
+                    otherSheep.rect.x += push;
+                } else {
+                    rect.x += push;
+                    otherSheep.rect.x -= push;
+                }
+                if (rect.y < otherSheep.rect.y) {
+                    rect.y -= push;
+                    otherSheep.rect.y += push;
+                } else {
+                    rect.y += push;
+                    otherSheep.rect.y -= push;
+                }
+            }
+        }
+
         if (rect.x < 0) rect.x = 0;
         if (rect.y < 180) rect.y = 180;
         if (rect.x > SCREEN_WIDTH - rect.w) rect.x = SCREEN_WIDTH - rect.w;
         if (rect.y > SCREEN_HEIGHT - rect.h) rect.y = SCREEN_HEIGHT - rect.h;
     }
+
     void Update() override {}
 };
 
@@ -104,15 +134,14 @@ public:
     void HandleInput(const Uint8* keystates, Uint32 currentTime) {
         if (currentTime - lastMoveTime >= moveDelay) {
             if (keystates[SDL_SCANCODE_UP] && currentLane > 0) {
-                currentLane--;
+                MoveUp();
                 lastMoveTime = currentTime;
             }
             if (keystates[SDL_SCANCODE_DOWN] && currentLane < 2) {
-                currentLane++;
+                MoveDown();
                 lastMoveTime = currentTime;
             }
         }
-        rect.y = 100 + currentLane * LANE_HEIGHT;
     }
 
     void Update() override {}
@@ -156,6 +185,21 @@ int main(int argc, char* argv[]) {
     SDL_Texture* monsterTex= LoadTexture(renderer, "monster.png");
     SDL_Texture* bulletTex = LoadTexture(renderer, "bullet.png");
 
+    SDL_Texture* winTex  = LoadTexture(renderer, "win.png");
+    SDL_Texture* loseTex = LoadTexture(renderer, "lose.png");
+    Mix_Chunk* winSound = Mix_LoadWAV("win.wav");
+    Mix_Chunk* loseSound = Mix_LoadWAV("lose.wav");
+
+    if (!winTex || !loseTex || !winSound || !loseSound) {
+        std::cerr << "Lỗi tải tài nguyên kết quả: " << IMG_GetError() << " hoặc " << Mix_GetError() << std::endl;
+        return 1;
+    }
+
+    int monstersPassed = 0;
+    int monstersKilled = 0;
+    bool inResult = false;
+    bool isWin = false;
+
     Dog dog;
     dog.rect = { 100, 100, 64, 64 };
     dog.texture = dogTex;
@@ -163,7 +207,7 @@ int main(int argc, char* argv[]) {
     std::vector<Sheep> sheeps;
     std::vector<Uint32> sheepRespawnTime;
 
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 10; ++i) {
         Sheep s;
         s.rect = { rand() % 700, rand() % 500, 48, 48 };
         s.texture = sheepTex;
@@ -207,13 +251,13 @@ int main(int argc, char* argv[]) {
         if (inDay ) {
             static bool dayMusicPlaying = false;
             if (!dayMusicPlaying) {
-                Mix_PlayMusic(dayMusic, -1); // lặp vô hạn
+                Mix_PlayMusic(dayMusic, -1);
                 dayMusicPlaying = true;
             }
             dog.HandleInput(keys);
 
             for (auto& s : sheeps) {
-                s.UpdateAvoidDog(dog.rect);
+                s.UpdateAvoidDog(dog.rect, sheeps);
             }
 
             std::vector<Sheep> remaining;
@@ -262,32 +306,27 @@ int main(int argc, char* argv[]) {
                 showTransition = false;
                 inNight = true;
                 nightStart = SDL_GetTicks();
+                lastMonsterSpawn = SDL_GetTicks();
                 Mix_PlayMusic(nightMusic, -1);
             }
         }
-        else if (inNight ) {
-            if (keys[SDL_SCANCODE_UP] && now - lastArrowPress > arrowDelay) {
-                player.MoveUp();
-                lastArrowPress = now;
-            } else if (keys[SDL_SCANCODE_DOWN] && now - lastArrowPress > arrowDelay) {
-                player.MoveDown();
-                lastArrowPress = now;
-            }
+        else if (inNight) {
+            const Uint8* keys = SDL_GetKeyboardState(NULL);
+            player.HandleInput(keys, now);
+
             if (keys[SDL_SCANCODE_SPACE] && !bulletOnScreen) {
                 Bullet b;
-                b.rect = { player.rect.x + player.rect.w, player.rect.y - 2, 75, 100 };
+                b.rect = { player.rect.x + player.rect.w, player.rect.y - 20, 75, 100 };
                 b.texture = bulletTex;
                 bullets.push_back(b);
                 bulletOnScreen = true;
-                Mix_PlayChannel(-1,bulletSound, 0);
+                Mix_PlayChannel(-1, bulletSound, 0);
             }
 
             for (auto& b : bullets) b.Update();
             bullets.erase(
                 std::remove_if(bullets.begin(), bullets.end(),
-                               [&](Bullet& b) {
-                                   return b.rect.x > SCREEN_WIDTH;
-                               }),
+                               [&](Bullet& b) { return b.rect.x > SCREEN_WIDTH; }),
                 bullets.end()
             );
             if (bullets.empty()) bulletOnScreen = false;
@@ -309,14 +348,38 @@ int main(int argc, char* argv[]) {
                 for (auto& b : bullets) {
                     if (SDL_HasIntersection(&m.rect, &b.rect)) {
                         hit = true;
+                        monstersKilled++;
                         Mix_PlayChannel(-1, monsterSound, 0);
                         b.rect.x = SCREEN_WIDTH + 100;
                         break;
                     }
                 }
-                if (!hit) newMonsters.push_back(m);
+                if (!hit && m.alive) newMonsters.push_back(m);
             }
             monsters = newMonsters;
+
+            for (auto& m : monsters) {
+                if (m.rect.x < player.rect.x && m.alive) {
+                    monstersPassed++;
+                    m.alive = false;
+                }
+            }
+
+            if (monstersPassed >= 3) {
+                inNight = false;
+                inResult = true;
+                isWin = false;
+                Mix_HaltMusic();
+                Mix_PlayChannel(-1, loseSound, 0);
+            }
+
+            if (now - nightStart > NIGHT_DURATION) {
+                inNight = false;
+                inResult = true;
+                isWin = (monstersPassed <= 3);
+                Mix_HaltMusic();
+                Mix_PlayChannel(-1, isWin ? winSound : loseSound, 0);
+            }
 
             SDL_RenderClear(renderer);
             SDL_RenderCopy(renderer, bgNight, NULL, NULL);
@@ -325,11 +388,21 @@ int main(int argc, char* argv[]) {
             for (auto& b : bullets) b.Render(renderer);
             for (auto& m : monsters) m.Render(renderer);
             SDL_RenderPresent(renderer);
-            if (now - nightStart > NIGHT_DURATION) {
-                inNight = false;
-                running = false;
-                Mix_HaltMusic();
+}
+        else if (inResult) {
+            while (SDL_PollEvent(&e)) {
+                if (e.type == SDL_QUIT || (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)) {
+                    running = false;
+                }
             }
+
+            SDL_RenderClear(renderer);
+            SDL_RenderCopy(renderer, bgDay, NULL, NULL);
+
+            SDL_Rect resultRect = { (SCREEN_WIDTH - 300) / 2, (SCREEN_HEIGHT - 200) / 2, 300, 200 };
+            SDL_RenderCopy(renderer, isWin ? winTex : loseTex, NULL, &resultRect);
+
+            SDL_RenderPresent(renderer);
         }
         Uint32 frameTime = SDL_GetTicks() - startTicks;
         if (frameTime < 1000 / 60) {
@@ -344,6 +417,10 @@ int main(int argc, char* argv[]) {
     Mix_FreeChunk(monsterSound);
     Mix_CloseAudio();
 
+    SDL_DestroyTexture(winTex);
+    SDL_DestroyTexture(loseTex);
+    Mix_FreeChunk(winSound);
+    Mix_FreeChunk(loseSound);
 
     SDL_DestroyTexture(bgDay);
     SDL_DestroyTexture(bgNight);
